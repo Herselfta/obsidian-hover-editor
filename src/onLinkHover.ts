@@ -78,13 +78,19 @@ export function onLinkHover(
     const onKeyUp = function (event: KeyboardEvent) {
       if (!editor) return;
       const modKey = Platform.isMacOS ? "Meta" : "Control";
+      // 修改逻辑：只要松开了修饰键且鼠标不在弹窗上，就应该关闭
+      if (event.key === modKey && !editor.onHover && !editor.isPinned) {
+        editor.state = PopoverState.Hidden;
+        editor.hide();
+        editor.lockedOut = true;
+        setTimeout(unlock, 1000);
+      }
+      // 如果按下的不是修饰键，也应该关闭未显示的弹窗
       if (!editor.onHover && editor.state !== PopoverState.Shown && event.key !== modKey) {
         editor.state = PopoverState.Hidden;
         editor.hide();
         editor.lockedOut = true;
         setTimeout(unlock, 1000);
-      } else {
-        document.body.removeEventListener("keyup", onKeyUp, true);
       }
     };
 

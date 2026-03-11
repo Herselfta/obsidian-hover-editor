@@ -176,6 +176,27 @@ don't live in a root split, we have to copy the override:
 }
 
 .popover.hover-editor .markdown-preview-view {
+  font-size: var(--font-text-size);
+}
+
+/* 确保阅读模式中的所有文本元素使用正常大小 */
+.popover.hover-editor .markdown-preview-view .markdown-preview-section {
+  font-size: var(--font-text-size);
+}
+
+.popover.hover-editor .markdown-preview-view p,
+.popover.hover-editor .markdown-preview-view li,
+.popover.hover-editor .markdown-preview-view blockquote,
+.popover.hover-editor .markdown-preview-view table {
+  font-size: inherit;
+}
+
+.popover.hover-editor .markdown-preview-view h1,
+.popover.hover-editor .markdown-preview-view h2,
+.popover.hover-editor .markdown-preview-view h3,
+.popover.hover-editor .markdown-preview-view h4,
+.popover.hover-editor .markdown-preview-view h5,
+.popover.hover-editor .markdown-preview-view h6 {
   font-size: inherit;
 }
 
@@ -288,10 +309,6 @@ don't live in a root split, we have to copy the override:
 .popover-action:hover,
 .popover-header-icon:hover {
   color: var(--he-title-bar-active-action);
-}
-
-.popover-action.is-active svg,
-.mod-pin-popover.is-active svg {
 }
 
 .mod-pin-popover.is-active > svg {

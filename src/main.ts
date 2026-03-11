@@ -29,7 +29,7 @@ import {
 
 import { onLinkHover } from "./onLinkHover";
 import { PerWindowComponent, use } from "@ophidian/core";
-import { HoverEditorParent, HoverEditor, isHoverLeaf, setMouseCoords } from "./popover";
+import { HoverEditorParent, HoverEditor, isHoverLeaf, setMouseCoords, initGlobalMouseTracking, cleanupGlobalMouseTracking } from "./popover";
 import { DEFAULT_SETTINGS, HoverEditorSettings, SettingTab } from "./settings/settings";
 import { snapActivePopover, snapDirections, restoreActivePopover, minimizeActivePopover } from "./utils/measure";
 import { Scope } from "@interactjs/types";
@@ -73,6 +73,9 @@ export default class HoverEditorPlugin extends Plugin {
   settingsTab: SettingTab;
 
   async onload() {
+    // 初始化全局鼠标位置跟踪，确保 mouseCoords 始终是最新的
+    initGlobalMouseTracking();
+    
     this.registerActivePopoverHandler();
     this.registerFileRenameHandler();
     this.registerContextMenuHandler();
@@ -580,6 +583,8 @@ export default class HoverEditorPlugin extends Plugin {
   }
 
   onunload(): void {
+    // 清理全局鼠标位置跟踪
+    cleanupGlobalMouseTracking();
     HoverEditor.activePopovers().forEach(popover => popover.hide());
   }
 
@@ -645,6 +650,20 @@ export default class HoverEditorPlugin extends Plugin {
       },
     });
     this.addCommand({
+      id: "open-active-pane-in-popover",
+      name: "Open active pane in Hover Editor",
+      checkCallback: (checking: boolean) => {
+        const { activeLeaf } = this.app.workspace;
+        if (activeLeaf) {
+          if (!checking) {
+            this.openPaneInPopover(activeLeaf);
+          }
+          return true;
+        }
+        return false;
+      },
+    });
+    this.addCommand({
       id: "convert-active-pane-to-popover",
       name: "Convert active pane to Hover Editor",
       checkCallback: (checking: boolean) => {
@@ -686,6 +705,48 @@ export default class HoverEditorPlugin extends Plugin {
         return minimizeActivePopover(checking);
       },
     });
+    this.addCommand({
+      id: "toggle-all-pinned-popovers",
+      name: "Toggle visibility of all pinned Hover Editors",
+      callback: () => {
+        const pinnedPopovers = HoverEditor.activePopovers().filter(popover => popover.isPinned);
+        if (pinnedPopovers.length === 0) return;
+        
+        // 检查是否所有已 pin 的窗口都是可见的
+        const allVisible = pinnedPopovers.every(popover => popover.hoverEl.style.display !== 'none');
+        
+        // 切换显示状态
+        pinnedPopovers.forEach(popover => {
+          if (allVisible) {
+            // 隐藏所有已 pin 的窗口
+            popover.hoverEl.style.display = 'none';
+          } else {
+            // 显示所有已 pin 的窗口
+            popover.hoverEl.style.display = '';
+          }
+        });
+      },
+    });
+    this.addCommand({
+      id: "show-all-pinned-popovers",
+      name: "Show all pinned Hover Editors",
+      callback: () => {
+        const pinnedPopovers = HoverEditor.activePopovers().filter(popover => popover.isPinned);
+        pinnedPopovers.forEach(popover => {
+          popover.hoverEl.style.display = '';
+        });
+      },
+    });
+    this.addCommand({
+      id: "hide-all-pinned-popovers",
+      name: "Hide all pinned Hover Editors",
+      callback: () => {
+        const pinnedPopovers = HoverEditor.activePopovers().filter(popover => popover.isPinned);
+        pinnedPopovers.forEach(popover => {
+          popover.hoverEl.style.display = 'none';
+        });
+      },
+    });
     snapDirections.forEach(direction => {
       this.addCommand({
         id: `snap-active-popover-to-${direction}`,
@@ -695,6 +756,23 @@ export default class HoverEditorPlugin extends Plugin {
         },
       });
     });
+  }
+
+  openPaneInPopover(oldLeaf: WorkspaceLeaf) {
+    if (!oldLeaf) return;
+    const viewState = oldLeaf.getViewState();
+    
+    // 使用 undefined 来触发基于光标位置的定位
+    // 这样弹窗会出现在光标位置，标题栏与光标重合
+    const newLeaf = this.spawnPopover(undefined, async () => {
+      const {autoFocus} = this.settings;
+      await newLeaf.setViewState({...viewState, active: autoFocus}, {focus: autoFocus});
+      if (autoFocus) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        this.app.workspace.setActiveLeaf(newLeaf, {focus: true});
+      }
+    });
+    return newLeaf;
   }
 
   convertLeafToPopover(oldLeaf: WorkspaceLeaf) {

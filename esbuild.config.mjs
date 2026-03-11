@@ -22,37 +22,40 @@ const staticAssetsPlugin = {
 
 const prod = process.argv[2] === "production";
 
-esbuild
-  .build({
-    banner: {
-      js: banner,
-    },
-    minify: prod ? true : false,
-    entryPoints: ["src/main.ts"],
-    bundle: true,
-    external: [
-      "obsidian",
-      "electron",
-      "codemirror",
-      "@codemirror/view",
-      ...builtins,
-    ],
-    format: "cjs",
-    watch: !prod,
-    target: "ES2018",
-    logLevel: "info",
-    sourcemap: prod ? false : "inline",
-    treeShaking: true,
-    outfile: "dist/main.js",
-    plugins: [
-      staticAssetsPlugin,
-      copy.default({
-        verbose: false,
-        assets: {
-          from: ['manifest*', 'styles.css'],
-          to: ['.'],
-        }
-      }),
-    ],
-  })
-  .catch(() => process.exit(1));
+const buildOptions = {
+  banner: {
+    js: banner,
+  },
+  minify: prod ? true : false,
+  entryPoints: ["src/main.ts"],
+  bundle: true,
+  external: [
+    "obsidian",
+    "electron",
+    "codemirror",
+    "@codemirror/view",
+    ...builtins,
+  ],
+  format: "cjs",
+  target: "ES2018",
+  logLevel: "info",
+  sourcemap: prod ? false : "inline",
+  treeShaking: true,
+  outfile: "dist/main.js",
+  plugins: [
+    staticAssetsPlugin,
+    copy.default({
+      verbose: false,
+      assets: {
+        from: ['manifest*', 'styles.css'],
+        to: ['.'],
+      }
+    }),
+  ],
+};
+
+if (prod) {
+  esbuild.build(buildOptions).catch(() => process.exit(1));
+} else {
+  esbuild.context(buildOptions).then(ctx => ctx.watch()).catch(() => process.exit(1));
+}

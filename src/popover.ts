@@ -216,7 +216,7 @@ export class HoverEditor extends nosuper(HoverPopover) {
       }
     });
     this.timer = window.setTimeout(this.show.bind(this), waitTime);
-    this.document.addEventListener("mousemove", setMouseCoords);
+    // 全局 mousemove 监听器已在插件加载时添加，不再需要在每个实例中添加
 
     // custom logic begin
     popovers.set(this.hoverEl, this);
@@ -630,9 +630,11 @@ export class HoverEditor extends nosuper(HoverPopover) {
     let rect;
 
     if (pos) {
+      // 当使用光标位置时，直接将 rect 设置为光标位置
+      // 这样 positionEl 会以光标为基准进行定位
       rect = {
-        top: pos.y - 10,
-        bottom: pos.y + 10,
+        top: pos.y,
+        bottom: pos.y,
         left: pos.x,
         right: pos.x,
       };
@@ -654,17 +656,36 @@ export class HoverEditor extends nosuper(HoverPopover) {
     }
 
     this.document.body.appendChild(this.hoverEl);
-    positionEl(rect, this.hoverEl, { gap: 10 }, this.document);
-
-    // custom hover editor logic
+    
     if (pos) {
-      // give positionEl a chance to adjust the position before we read the coords
-      setTimeout(() => {
-        const left = parseFloat(this.hoverEl.style.left);
-        const top = parseFloat(this.hoverEl.style.top);
-        this.hoverEl.setAttribute("data-x", String(left));
-        this.hoverEl.setAttribute("data-y", String(top));
-      }, 0);
+      // 对于光标触发的弹窗，直接设置位置，不使用 positionEl 的自动调整
+      // 这样可以避免边界裁剪
+      
+      // 调整位置，使标题栏（可拖动栏）与光标重合
+      const titleBarHeight = this.titleEl ? this.titleEl.offsetHeight : 30;
+      
+      // 将弹窗向上移动，使光标位于标题栏中央
+      const newTop = pos.y - (titleBarHeight / 2);
+      // 水平方向让光标位于距离左边缘 60px 的位置，避开 pin 按钮
+      // pin 按钮通常在左边缘约 30-40px 的位置
+      const newLeft = pos.x - 60;
+      
+      // 直接设置位置，允许超出视口
+      this.hoverEl.style.left = newLeft + 'px';
+      this.hoverEl.style.top = newTop + 'px';
+      this.hoverEl.setAttribute("data-x", String(newLeft));
+      this.hoverEl.setAttribute("data-y", String(newTop));
+      
+      // 显示弹窗（positionEl 中会调用 el.show()）
+      this.hoverEl.show();
+    } else {
+      // 对于非光标触发的情况，使用原有的 positionEl 逻辑
+      positionEl(rect, this.hoverEl, { gap: 10 }, this.document);
+      
+      const left = parseFloat(this.hoverEl.style.left);
+      const top = parseFloat(this.hoverEl.style.top);
+      this.hoverEl.setAttribute("data-x", String(left));
+      this.hoverEl.setAttribute("data-y", String(top));
     }
   }
 
@@ -924,7 +945,7 @@ export class HoverEditor extends nosuper(HoverPopover) {
       this.timer = 0;
       this.shownPos = mouseCoords;
       this.position(mouseCoords);
-      this.document.removeEventListener("mousemove", setMouseCoords);
+      // 全局 mousemove 监听器在插件卸载时移除，不需要在这里移除
       this.onShow();
       app.workspace.onLayoutChange();
       // initializingHoverPopovers.remove(this);
@@ -944,11 +965,12 @@ export class HoverEditor extends nosuper(HoverPopover) {
       this.hoverEl.style.width = parseFloat(this.hoverEl.dataset.imgWidth) + "px";
     }
     this.registerInteract();
-    this.interact?.reflow({
-      name: "resize",
-      edges: { right: true, bottom: true },
-    });
-    this.interact?.reflow({ name: "drag", axis: "xy" });
+    // 不进行 reflow，允许弹窗保持完整大小，即使超出视口
+    // this.interact?.reflow({
+    //   name: "resize",
+    //   edges: { right: true, bottom: true },
+    // });
+    // this.interact?.reflow({ name: "drag", axis: "xy" });
   }
 
   onHide() {
@@ -965,8 +987,7 @@ export class HoverEditor extends nosuper(HoverPopover) {
     // Once we reach this point, we're committed to closing
     layers.get(this.document.win)?.delete(this);
 
-    // in case we didn't ever call show()
-    this.document.removeEventListener("mousemove", setMouseCoords);
+    // 全局 mousemove 监听器在插件卸载时移除，不需要在这里移除
 
     // A timer might be pending to call show() for the first time, make sure
     // it doesn't bring us back up after we close
@@ -1360,6 +1381,20 @@ export function setMouseCoords(event: MouseEvent) {
     x: event.clientX,
     y: event.clientY,
   };
+}
+
+export function initGlobalMouseTracking() {
+  // 为所有活动窗口添加 mousemove 监听器
+  HoverEditor.activeWindows().forEach(win => {
+    win.document.addEventListener("mousemove", setMouseCoords);
+  });
+}
+
+export function cleanupGlobalMouseTracking() {
+  // 清理所有窗口的 mousemove 监听器
+  HoverEditor.activeWindows().forEach(win => {
+    win.document.removeEventListener("mousemove", setMouseCoords);
+  });
 }
 
 function mouseIsOffTarget(event: MouseEvent, el: Element) {

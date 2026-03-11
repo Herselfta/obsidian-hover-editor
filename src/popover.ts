@@ -35,6 +35,7 @@ import {
   dragMoveListener,
 } from "./utils/measure";
 import { isA } from "./utils/misc";
+import { defer } from "@ophidian/core";
 
 const popovers = new WeakMap<Element, HoverEditor>();
 export interface HoverEditorParent {
@@ -426,9 +427,8 @@ export class HoverEditor extends nosuper(HoverPopover) {
     this.adjustHeight(value ? calculatedViewHeaderHeight : -calculatedViewHeaderHeight);
     setTimeout(() => {
       this.hoverEl.style.removeProperty("transition");
+      this.requestLeafMeasure();
     }, 200);
-
-    this.requestLeafMeasure();
   }
 
   buildWindowControls() {
@@ -473,14 +473,8 @@ export class HoverEditor extends nosuper(HoverPopover) {
   }
 
   requestLeafMeasure() {
-    // address view height measurement issues triggered by css transitions
-    // we wait a bit for the transition to finish and remeasure
-    const leaves = this.leaves();
-    if (leaves.length) {
-      setTimeout(() => {
-        leaves.forEach(leaf => leaf.onResize());
-      }, 200);
-    }
+    // address view height measurement issues triggered by css transitions, resize, etc.
+    this.leaves().forEach(leaf => leaf.onResize());
   }
 
   onShow() {
@@ -823,6 +817,7 @@ export class HoverEditor extends nosuper(HoverPopover) {
             if (isA(event.target, HTMLElement)) {
               event.target.removeClass("is-dragging");
             }
+            self.requestLeafMeasure();
           },
           move: dragMoveListener.bind(self),
         },
@@ -1185,7 +1180,8 @@ export class HoverEditor extends nosuper(HoverPopover) {
             1,
           );
           const recentFiles = this.plugin.app.plugins.plugins["recent-files-obsidian"];
-          if (recentFiles)
+          if (recentFiles) {
+            const view = this.plugin.app.workspace.getLeavesOfType("recent-files").first()?.view as any
             setTimeout(
               around(recentFiles, {
                 shouldAddFile(old) {
@@ -1197,12 +1193,21 @@ export class HoverEditor extends nosuper(HoverPopover) {
                 update(old) {
                   // Newer versions of the plugin need this instead
                   return function (_file) {
+                    if (view && _file === file) {
+                      // Recent Files 1.7.4+ tries to redraw on file-open event,
+                      // which will lose the original hovered element on
+                      // autofocus (see #326, tgrosinger/recent-files-obsidian#132)
+                      defer(around(view, {redraw(old) {
+                        // no-op: block refresh from happening in this microtick
+                      }}))
+                    }
                     return old.call(this, _file === file ? null : _file);
                   }
                 }
               }),
               1,
             );
+          }
         });
       } else if (!this.plugin.settings.autoFocus && !this.detaching) {
         const titleEl = this.hoverEl.querySelector(".popover-title");

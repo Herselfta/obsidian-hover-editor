@@ -83,7 +83,7 @@ export class HoverEditor extends nosuper(HoverPopover) {
 
   rootSplit: WorkspaceSplit = new (WorkspaceSplit as ConstructableWorkspaceSplit)(window.app.workspace, "vertical");
 
-  targetRect = this.targetEl?.getBoundingClientRect();
+  targetRect = unframedBounds(this.targetEl);
 
   pinEl: HTMLElement;
 
@@ -97,7 +97,7 @@ export class HoverEditor extends nosuper(HoverPopover) {
 
   oldPopover = this.parent?.hoverPopover;
 
-  document: Document = this.targetEl?.ownerDocument ?? window.activeDocument ?? window.document;
+  document: Document = unframedWindow(this.targetEl?.win ?? activeWindow ?? window).document;
 
   interactStatic = this.plugin.interact.forDom(this.document.body).interact;
 
@@ -107,7 +107,7 @@ export class HoverEditor extends nosuper(HoverPopover) {
 
   resizeModifiers: Modifier[];
 
-  dragElementRect: { top: number; left: number; bottom: number; right: number };
+  dragElementRect: Bounds;
 
   onMouseIn: (event: MouseEvent) => void;
 
@@ -237,7 +237,7 @@ export class HoverEditor extends nosuper(HoverPopover) {
 
   adopt(targetEl: HTMLElement) {
     if (this.targetEl === targetEl) return true;
-    const bounds = targetEl?.getBoundingClientRect();
+    const bounds = unframedBounds(targetEl);
     if (overlaps(this.targetRect, bounds)) {
       this.targetEl.removeEventListener("mouseover", this.onMouseIn);
       this.targetEl.removeEventListener("mouseout", this.onMouseOut);
@@ -322,7 +322,7 @@ export class HoverEditor extends nosuper(HoverPopover) {
   }
 
   updateLeaves() {
-    if (this.onTarget && this.targetEl && !this.document.contains(this.targetEl)) {
+    if (this.onTarget && this.targetEl && !this.targetEl.isConnected) {
       this.onTarget = false;
       this.transition();
     }
@@ -935,7 +935,7 @@ export class HoverEditor extends nosuper(HoverPopover) {
 
   show() {
     // native obsidian logic start
-    if (!this.targetEl || this.document.body.contains(this.targetEl)) {
+    if (!this.targetEl || this.targetEl.isConnected) {
       this.state = PopoverState.Shown;
       this.timer = 0;
       this.shownPos = mouseCoords;
@@ -1386,6 +1386,11 @@ export function setMouseCoords(event: MouseEvent) {
     x: event.clientX,
     y: event.clientY,
   };
+  if (event.win.frameElement) {
+    const {x, y, scale} = unframed(event.win)
+    mouseCoords.x = x + mouseCoords.x * scale
+    mouseCoords.y = y + mouseCoords.y * scale
+  }
 }
 
 export function initGlobalMouseTracking() {
@@ -1407,7 +1412,7 @@ function mouseIsOffTarget(event: MouseEvent, el: Element) {
   return !(isA(relatedTarget, Node) && el.contains(relatedTarget));
 }
 
-function overlaps(rect1?: DOMRect, rect2?: DOMRect) {
+function overlaps(rect1?: Bounds, rect2?: Bounds) {
   return !!(
     rect1 &&
     rect2 &&
@@ -1416,4 +1421,41 @@ function overlaps(rect1?: DOMRect, rect2?: DOMRect) {
     rect1.bottom > rect2.top &&
     rect1.top < rect2.bottom
   );
+}
+
+type Bounds = { top: number; left: number; bottom: number; right: number }
+
+function unframedBounds(el: HTMLElement): Bounds {
+  const r = el?.getBoundingClientRect()
+  if (el?.win.frameElement) {
+    const {x, y, scale} = unframed(el.win)
+    return {
+      left:   x + r.left   * scale,
+      right:  x + r.right  * scale,
+      top:    y + r.top    * scale,
+      bottom: y + r.bottom * scale,
+    }
+  }
+  return r
+}
+
+function unframedWindow(win: Window) {
+  return win.frameElement ? unframed(win).win : win
+}
+
+/**
+ * Get the scale, offset, and top-level window of an iframe or window
+ *
+ * Returns `{x: 0, y: 0, scale: 1, win: inputwindow}` if unframed.
+ */
+function unframed(win: Window) {
+  let x = 0, y = 0, scale = 1;
+  for(var el: Element; el = win.frameElement!; win = el.win) {
+    const rect = el.getBoundingClientRect()
+    const ratio = rect.width / el.clientWidth
+    scale *= ratio
+    x = rect.x + x*ratio
+    y = rect.y + y*ratio
+  }
+  return {x, y, scale, win}
 }
